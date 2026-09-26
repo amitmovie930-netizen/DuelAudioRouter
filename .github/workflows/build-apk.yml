@@ -15,11 +15,12 @@ jobs:
 
       - name: Unzip project
         run: |
+          set -e
           echo "Files in repo:"
           ls -la
-          ZIP=$(ls DualAudio*.zip DuelAudio*.zip 2>/dev/null | head -1)
+          ZIP=$(ls DualAudio*.zip DuelAudio*.zip 2>/dev/null | head -1 || true)
           if [ -z "$ZIP" ]; then
-            ZIP=$(ls *.zip 2>/dev/null | head -1)
+            ZIP=$(ls *.zip 2>/dev/null | head -1 || true)
           fi
           if [ -z "$ZIP" ]; then
             echo "ERROR: No zip file found"
@@ -34,8 +35,9 @@ jobs:
           rm -f "$ZIP"
           echo "After extract:"
           ls -la
-          test -f settings.gradle.kts && echo "OK: settings.gradle.kts found" || echo "WARN: settings.gradle.kts missing"
-          test -d app && echo "OK: app/ found" || echo "WARN: app/ missing"
+          test -f settings.gradle.kts
+          test -d app
+          test -f app/build.gradle.kts
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -43,19 +45,27 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: "8.2"
-
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Accept Android licenses
-        run: yes | sdkmanager --licenses || true
+      - name: Install SDK packages
+        run: |
+          set -e
+          sdkmanager "platforms;android-31" "build-tools;31.0.0" "platform-tools"
+          yes | sdkmanager --licenses || true
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          ls "$ANDROID_HOME/platforms" || true
 
       - name: Build Debug APK
-        run: gradle assembleDebug --stacktrace
+        run: |
+          set -e
+          if ! command -v gradle >/dev/null 2>&1; then
+            curl -sL https://services.gradle.org/distributions/gradle-8.2-bin.zip -o /tmp/gradle.zip
+            sudo unzip -q /tmp/gradle.zip -d /opt
+            export PATH="/opt/gradle-8.2/bin:$PATH"
+          fi
+          gradle --version
+          gradle assembleDebug --stacktrace --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
