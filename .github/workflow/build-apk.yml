@@ -1,0 +1,65 @@
+
+name: Build Debug APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Unzip project
+        run: |
+          echo "Files in repo:"
+          ls -la
+          ZIP=$(ls DualAudio*.zip DuelAudio*.zip 2>/dev/null | head -1)
+          if [ -z "$ZIP" ]; then
+            ZIP=$(ls *.zip 2>/dev/null | head -1)
+          fi
+          if [ -z "$ZIP" ]; then
+            echo "ERROR: No zip file found"
+            exit 1
+          fi
+          echo "Extracting: $ZIP"
+          unzip -o "$ZIP"
+          if [ -d DualAudioRouter ]; then
+            cp -a DualAudioRouter/. .
+            rm -rf DualAudioRouter
+          fi
+          rm -f "$ZIP"
+          echo "After extract:"
+          ls -la
+          test -f settings.gradle.kts && echo "OK: settings.gradle.kts found" || echo "WARN: settings.gradle.kts missing"
+          test -d app && echo "OK: app/ found" || echo "WARN: app/ missing"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: "8.2"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Accept Android licenses
+        run: yes | sdkmanager --licenses || true
+
+      - name: Build Debug APK
+        run: gradle assembleDebug --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: DualAudioRouter-debug
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
