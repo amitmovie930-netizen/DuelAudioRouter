@@ -1,4 +1,3 @@
-
 name: Build Debug APK
 
 on:
@@ -15,12 +14,12 @@ jobs:
 
       - name: Unzip project
         run: |
-          set -e
           echo "Files in repo:"
           ls -la
-          ZIP=$(ls DualAudio*.zip DuelAudio*.zip 2>/dev/null | head -1 || true)
+          # Find any DualAudio*.zip or DuelAudio*.zip
+          ZIP=$(ls DualAudio*.zip DuelAudio*.zip 2>/dev/null | head -1)
           if [ -z "$ZIP" ]; then
-            ZIP=$(ls *.zip 2>/dev/null | head -1 || true)
+            ZIP=$(ls *.zip 2>/dev/null | head -1)
           fi
           if [ -z "$ZIP" ]; then
             echo "ERROR: No zip file found"
@@ -28,16 +27,17 @@ jobs:
           fi
           echo "Extracting: $ZIP"
           unzip -o "$ZIP"
+          # If contents are inside a folder, move them to root
           if [ -d DualAudioRouter ]; then
             cp -a DualAudioRouter/. .
             rm -rf DualAudioRouter
           fi
+          # Clean up zip so it does not confuse Gradle
           rm -f "$ZIP"
           echo "After extract:"
           ls -la
-          test -f settings.gradle.kts
-          test -d app
-          test -f app/build.gradle.kts
+          test -f settings.gradle.kts && echo "OK: settings.gradle.kts found" || echo "WARN: settings.gradle.kts missing"
+          test -d app && echo "OK: app/ found" || echo "WARN: app/ missing"
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -45,27 +45,24 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: "8.2"
 
-      - name: Install SDK packages
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: ''          # do not install anything extra yet
+
+      - name: Accept licenses & install required packages
         run: |
           set -e
-          sdkmanager "platforms;android-31" "build-tools;31.0.0" "platform-tools"
-          yes | sdkmanager --licenses || true
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          ls "$ANDROID_HOME/platforms" || true
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-31" "build-tools;34.0.0"
 
       - name: Build Debug APK
-        run: |
-          set -e
-          if ! command -v gradle >/dev/null 2>&1; then
-            curl -sL https://services.gradle.org/distributions/gradle-8.2-bin.zip -o /tmp/gradle.zip
-            sudo unzip -q /tmp/gradle.zip -d /opt
-            export PATH="/opt/gradle-8.2/bin:$PATH"
-          fi
-          gradle --version
-          gradle assembleDebug --stacktrace --no-daemon
+        run: gradle assembleDebug --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
